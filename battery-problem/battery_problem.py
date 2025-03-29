@@ -97,24 +97,34 @@ def battery_problem_solve(num_of_bins : int = 2, is_relaxed : bool =False)-> tup
 
 def print_solution(opt_problem : cp.Problem,
                    battery_list : tuple[int, float]):
+    
     var_matrix = opt_problem.variables()[0]
     rounded_solutions = []
+    print("Battery Distribution solution: ")
     for row in var_matrix.value:
-        print(np.sum(row))
+        #print(row)
         rounded_solution = np.round(row)
         rounded_solutions.append(rounded_solution)
-        print(rounded_solution)
+        print(f'\t{rounded_solution}')
     
-    print("Total Voltage Per Bin: ")
     total_voltages = []
+    num_of_batts = []
     individual_voltages = np.array(battery_list[:, 1])
+    
     for row_sol in rounded_solutions: 
+        num_of_batts.append(int(np.sum(np.array(row_sol))))
         total_voltage = np.sum(individual_voltages @ np.array(row_sol))
-        total_voltages.append(total_voltage)
-        print(total_voltage)
+        total_voltages.append(float(total_voltage))
+    
+    print(f'\nTotal Voltage Per Bin: \n\t{total_voltages}')
+
+    print(f'Sum of batteries for each bin: \n\t{num_of_batts}\n')
 
 def str_2_bool(s:str) -> bool:
     return s.lower() in {'true', '1', 't', 'yes'}
+
+def colored_text(r, g, b, text):
+    return f"\033[38;2;{r};{g};{b}m{text}\033[0m"
 
 if __name__ == '__main__':
     battery_list = read_battery_list()
@@ -135,19 +145,22 @@ if __name__ == '__main__':
         except Exception as error:
             print(f"Error: {error}")
             exit()
+    
+    print(colored_text(0,0,255, "\nWelcome to the Battery Problem Solver!!\n"))
+    print(f'Solving the problem for\n\tNumber of Bins : {num_of_bins}\n\tRelaxed Version?: {is_relaxed}\n')
 
     error_code, result = battery_problem_solve(num_of_bins=num_of_bins, is_relaxed=is_relaxed)
 
     if(error_code == ERROR_CODE.INFEASIBLE):
-        print("Could not solve the problem properly")
+        print(colored_text(255,0,0,"Could not solve the problem properly"))
         print("Maybe the problem was not well posed")
     elif(error_code == ERROR_CODE.FAILED_BATTERY_SUM_COND):
         print_solution(result, battery_list)
-        print("Could not get a solution which matched the battery sum for each bin")
+        print(colored_text(255,255,0,"Could not get a solution which matched the battery sum for each bin"))
         print("Try the relaxed version if not already done")
     elif(error_code == ERROR_CODE.NO_ERROR):
         print_solution(result, battery_list)
-        print("\nEverything Went Well!")
+        print(colored_text(0, 255,0, "Everything Went Well!"))
     else:
         print("Something weird happened")
     
