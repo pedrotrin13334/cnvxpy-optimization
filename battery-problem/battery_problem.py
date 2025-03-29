@@ -41,10 +41,12 @@ def create_constraints(variable_matrix: cp.Variable,
 
     return constraints 
 
-def create_problem(number_of_bins : int = 2) -> cp.Problem:
+def create_problem(number_of_bins : int = 2, 
+                   stdev_weight : float = 100.0) -> cp.Problem:
     battery_list = read_battery_list()
     variables = create_problem_variables(battery_list, number_of_bins)
-    obj_function = create_objective_function(variables, battery_list)
+    obj_function = create_objective_function(variables, battery_list, 
+                                             std_weight=stdev_weight)
     constraints = create_constraints(variables, battery_list)
     problem = cp.Problem(obj_function, constraints)
     return problem
@@ -72,8 +74,10 @@ class ERROR_CODE(Enum):
     INFEASIBLE = 2
     FAILED_BATTERY_SUM_COND = 3
 
-def battery_problem_solve(num_of_bins : int = 2)-> tuple[bool,cp.Problem]:
-    problem = create_problem(number_of_bins=num_of_bins)
+def battery_problem_solve(num_of_bins : int = 2,
+                          stdev_weight : float = 100.0)-> tuple[bool,cp.Problem]:
+    problem = create_problem(number_of_bins=num_of_bins, 
+                             stdev_weight=stdev_weight)
     solve_problem(problem)
     var_matrix = problem.variables()[0]
 
@@ -134,6 +138,8 @@ if __name__ == '__main__':
     else:
         try:
             num_of_bins = int(sys.argv[1])
+            if(args_num == 3):
+                stdev_weight = float(sys.argv[2])
         except Exception as error:
             print(f"Error: {error}")
             exit()
@@ -141,7 +147,7 @@ if __name__ == '__main__':
     print(colored_text(0,0,255, "\nWelcome to the Battery Problem Solver!!\n"))
     print(f'Solving the problem for\n\tNumber of Bins : {num_of_bins}\n\tUsing std. dev. weight as: {stdev_weight}\n')
 
-    error_code, result = battery_problem_solve(num_of_bins=num_of_bins)
+    error_code, result = battery_problem_solve(num_of_bins=num_of_bins, stdev_weight=stdev_weight)
 
     if(error_code == ERROR_CODE.INFEASIBLE):
         print(colored_text(255,0,0,"Could not solve the problem properly"))
