@@ -12,30 +12,28 @@ def read_battery_list(file_name:str ='battery-list.csv') -> np.ndarray:
 def create_problem_variables(battery_list : list[int, float], 
                             number_of_bins : int) -> list[list[cp.Variable]]:
 
-    #variables_for_each_bin = cp.Variable((number_of_bins,len(battery_list)), integer=True)
-    variables_for_each_bin = cp.Variable((number_of_bins,len(battery_list)))
+    variables_for_each_bin = cp.Variable((number_of_bins,len(battery_list)), integer=True)
+    #variables_for_each_bin = cp.Variable((number_of_bins,len(battery_list)))
 
     return variables_for_each_bin
 
 def create_objective_function(variable_matrix: cp.Variable,
-                              battery_list: list[tuple, float]):
+                              battery_list: list[tuple, float],
+                              std_weight : float = 100):
     voltages = cp.Parameter(len(battery_list), nonneg=True)
     voltages.value = np.array(battery_list[:, 1])
     
-    objective = cp.Maximize(cp.sum(cp.log(variable_matrix @ voltages)))
+    objective = cp.Maximize(cp.min(variable_matrix @ voltages) - std_weight*cp.std(variable_matrix @ voltages))
+
     return objective
 
 def create_constraints(variable_matrix: cp.Variable,
-                       battery_list: list[tuple, float],
-                       is_relaxed = False):
+                       battery_list: list[tuple, float]):
     constraints = []
     for row in variable_matrix:
         constraints.append(row >= 0)
         constraints.append(row <= 4)
-        if(is_relaxed):
-            constraints.append(cp.sum(row) <= 5)
-        else:
-            constraints.append(cp.sum(row) <= 4)
+        constraints.append(cp.sum(row) <= 4)
         constraints.append(cp.sum(row) >= 4)
     
     for idx, column in enumerate(variable_matrix.T):
@@ -43,18 +41,16 @@ def create_constraints(variable_matrix: cp.Variable,
 
     return constraints 
 
-def create_problem(number_of_bins : int = 2,
-                   is_relaxed : bool = False) -> cp.Problem:
+def create_problem(number_of_bins : int = 2) -> cp.Problem:
     battery_list = read_battery_list()
     variables = create_problem_variables(battery_list, number_of_bins)
     obj_function = create_objective_function(variables, battery_list)
-    constraints = create_constraints(variables, battery_list, is_relaxed=is_relaxed)
+    constraints = create_constraints(variables, battery_list)
     problem = cp.Problem(obj_function, constraints)
     return problem
 
 def solve_problem(opt_problem : cp.Problem):
     opt_problem.solve()
-    #print("status:", opt_problem.status)
 
 def check_battery_choice_constraint(rounded_solutions : list[list[int]]) -> bool:
     """
@@ -76,16 +72,14 @@ class ERROR_CODE(Enum):
     INFEASIBLE = 2
     FAILED_BATTERY_SUM_COND = 3
 
-def battery_problem_solve(num_of_bins : int = 2, is_relaxed : bool =False)-> tuple[bool,cp.Problem]:
-    problem = create_problem(number_of_bins=num_of_bins,
-                             is_relaxed=is_relaxed)
+def battery_problem_solve(num_of_bins : int = 2)-> tuple[bool,cp.Problem]:
+    problem = create_problem(number_of_bins=num_of_bins)
     solve_problem(problem)
     var_matrix = problem.variables()[0]
 
     ## If on first try everything is okay, return the problem,
     ## if feasibillity is not achieved, abort. 
-    ## if only the solution doesn't meet the battery sum criteria, 
-    ## relax the problem. 
+    ## check if the solution doesn't meet the battery sum criteria, 
     if(problem.status == cp.OPTIMAL):
         rounded_solutions = get_rounded_solutions(var_matrix)
         if(check_battery_choice_constraint(rounded_solutions) == False):
@@ -103,7 +97,7 @@ def print_solution(opt_problem : cp.Problem,
     print("Battery Distribution solution: ")
     for row in var_matrix.value:
         #print(row)
-        rounded_solution = np.round(row)
+        rounded_solution = abs(np.round(row))
         rounded_solutions.append(rounded_solution)
         print(f'\t{rounded_solution}')
     
@@ -114,7 +108,7 @@ def print_solution(opt_problem : cp.Problem,
     for row_sol in rounded_solutions: 
         num_of_batts.append(int(np.sum(np.array(row_sol))))
         total_voltage = np.sum(individual_voltages @ np.array(row_sol))
-        total_voltages.append(float(total_voltage))
+        total_voltages.append(round(float(total_voltage), 4))
     
     print(f'\nTotal Voltage Per Bin: \n\t{total_voltages}')
 
@@ -131,8 +125,8 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2)
 
     ## Initial values to be changed by arguments
-    is_relaxed = False 
     num_of_bins = 2 
+    stdev_weight = 100
     
     args_num = len(sys.argv)
     if(not(args_num == 3 or args_num == 2)):
@@ -140,16 +134,14 @@ if __name__ == '__main__':
     else:
         try:
             num_of_bins = int(sys.argv[1])
-            if(args_num == 3):
-                is_relaxed = str_2_bool(sys.argv[2])
         except Exception as error:
             print(f"Error: {error}")
             exit()
     
     print(colored_text(0,0,255, "\nWelcome to the Battery Problem Solver!!\n"))
-    print(f'Solving the problem for\n\tNumber of Bins : {num_of_bins}\n\tRelaxed Version?: {is_relaxed}\n')
+    print(f'Solving the problem for\n\tNumber of Bins : {num_of_bins}\n\tUsing std. dev. weight as: {stdev_weight}\n')
 
-    error_code, result = battery_problem_solve(num_of_bins=num_of_bins, is_relaxed=is_relaxed)
+    error_code, result = battery_problem_solve(num_of_bins=num_of_bins)
 
     if(error_code == ERROR_CODE.INFEASIBLE):
         print(colored_text(255,0,0,"Could not solve the problem properly"))
@@ -157,7 +149,6 @@ if __name__ == '__main__':
     elif(error_code == ERROR_CODE.FAILED_BATTERY_SUM_COND):
         print_solution(result, battery_list)
         print(colored_text(255,255,0,"Could not get a solution which matched the battery sum for each bin"))
-        print("Try the relaxed version if not already done")
     elif(error_code == ERROR_CODE.NO_ERROR):
         print_solution(result, battery_list)
         print(colored_text(0, 255,0, "Everything Went Well!"))
